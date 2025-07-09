@@ -1,0 +1,6 @@
+target remote 192.168.0.70:1234
+layout asm
+add-symbol-file zig-out/bin/kernel.elf
+break main.myPanic
+break paging.enablePaging
+dir ./src
