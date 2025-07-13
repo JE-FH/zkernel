@@ -61,6 +61,21 @@ pub const BootstrapVMM = struct {
         self._map(VirtualAddress.from_address(virtual), PageTableEntry.from_physical_page_address(physical, writeable, user_mode_access));
     }
 
+    pub fn translate(self: *BootstrapVMM, comptime T: type, address: VirtualAddress) *?T {
+        const directoryEntry = self.virtual_page_directory.entries[address.page_directory_index];
+        if (directoryEntry.present == 0) {
+            return null;
+        }
+
+        const pageTable = @as(*PageTable, @intFromPtr(@as(usize, directoryEntry.pageTableEntryAddress) << 12));
+        const pageTableEntry = pageTable.page_table_entries[address.page_table_index];
+        if (pageTableEntry.present) {
+            return null;
+        }
+
+        return @as(*T, @intFromPtr((@as(usize, pageTableEntry.pageAddress) << 12) + address.page_offset));
+    }
+
     fn _map(self: *BootstrapVMM, virtual: VirtualAddress, new_pte: PageTableEntry) void {
         if (self.page_directory.as_ptr().entries[virtual.page_directory_index].present == 0) {
             const table = PhysicalPointer(PageTable).init(self.physical_memory_manager.reserve_exclusive_page().address);

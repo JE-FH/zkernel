@@ -108,6 +108,7 @@ const PageStatusType = enum {
     Free,
     Used,
     PMMDescriptor,
+    BoostrapData,
 };
 
 const PageStatus = struct {
@@ -136,7 +137,7 @@ const MemorySegmentDescription = struct {
         const usedBytesForDescription = @sizeOf(MemorySegmentDescription) + self.pageStatuses.len * @sizeOf(PageStatus);
 
         for (0..(usedBytesForDescription / 4096 + 1)) |pageIndex| {
-            self.pageStatuses[pageIndex].status = PageStatusType.PMMDescriptor;
+            self.pageStatuses[pageIndex].status = PageStatusType.BoostrapData;
         }
     }
 
@@ -276,24 +277,41 @@ pub const PhysicalMemoryManager = struct {
 };
 
 pub const MemorySectionManager = struct {
-    fn init() {
-        
-    }
-}
+    location: Segment,
+    next_memory_manager: *?MemorySectionManager,
 
+    fn from_bootstrap(bootstrap_segment: *MemorySegmentDescription) MemorySectionManager {
+        return .{
+            .location = bootstrap_segment.segment,
+        };
+    }
+
+    fn set_next(self: *MemorySectionManager, next: *MemorySectionManager) {
+        self.next_memory_manager = next;
+    }
+};
+
+//allocate space for initializing memory segment managers
+//copy all the old memory segment usage data
+//override all BoostrapData type to Free
 pub const PMM = struct {
-    memory_sections: []*MemorySegmentDescription,
+    memory_sections: *MemorySectionManager,
     fn init(bootstrap: *PhysicalMemoryManager, vmm: BootstrapVMM, virtual_start: usize) void {
         var current_virtual_offset = virtual_start;
-        const virtual_memory_sections = @as([*]*MemorySegmentDescription, @ptrFromInt(current_virtual_offset))[0..bootstrap.memory_sections.len];
+        var current_physical_address: usize = bootstrap.reserve_exclusive_page();
 
-        for (0..(bootstrap.memory_sections.len / 4096)) |offset| {
-            vmm.map(@intFromPtr(bootstrap.memory_sections) + (offset * 4096), current_virtual_offset, true, false);
-            current_virtual_offset += 4096;
-        }
+        const first_memory_section = PhysicalPointer(MemorySectionManager).init(current_physical_address);
+        const virtual_first_memory_section = @as(*MemorySectionManager, @ptrFromInt(current_virtual_offset));
+        first_memory_section.as_ptr().* = MemorySectionManager.init();
+
+        var current_memory_section = first_memory_section;
+        var virtual_current_memory_section = virtual_first_memory_section;
 
         for (bootstrap.memory_sections) |memory_section| {
+            current_memory_section.as_ptr().set_next(next: *MemorySectionManager)
             
+            current_memory_section.as_ptr() = MemorySectionManager.from_bootstrap(memory_section);
+            virtual_current_memory_section = 
         }
 
         return PMM{
